@@ -1133,6 +1133,7 @@ function leadBubble(t, e, contact) {
     <div class="b-head"><strong>Líder</strong>${!running && e.text ? `<button class="copy" data-copy-lead="${esc(`${t.cwd}|${e.id}`)}" title="Copiar resposta">📋 Copiar</button>` : ''}</div>
     ${e.text ? `<div class="b-md">${markdown(e.text)}</div>` : ''}
     ${running ? `<div class="b-live"><span class="dots" aria-hidden="true"></span>${esc(e.activity || 'pensando…')}</div>` : ''}
+    ${e.needsLogin ? '<div class="actions"><button data-act="lead-login" class="primary">🔑 Entrar na conta do Claude</button></div>' : ''}
     ${note || cost ? `<div class="b-meta b-meta-them">${[note, cost].filter(Boolean).join(' · ')}</div>` : ''}
   </div>`;
 }
@@ -1269,6 +1270,16 @@ $aside.addEventListener('click', async (e) => {
   if (!btn) return;
   const act = btn.dataset.act;
 
+  if (act === 'lead-login') {
+    btn.disabled = true;
+    try {
+      await post('/api/lead/login', {});
+      btn.textContent = '✔ Janela do terminal aberta';
+    } catch (ex) {
+      btn.textContent = ex.message;
+    }
+    return;
+  }
   if (act === 'lead-stop') {
     btn.disabled = true;
     await post('/api/lead/stop', { cwd: btn.closest('[data-cwd]').dataset.cwd }).catch(() => {});

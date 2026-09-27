@@ -383,6 +383,7 @@ async function handleRequest(req, res) {
           req.url === '/api/lead/send' ? await leadSend(data)
           : req.url === '/api/lead/stop' ? leadStop(data)
           : req.url === '/api/lead/mode' ? leadMode(data)
+          : req.url === '/api/lead/login' ? openLogin()
           : null;
         if (!result) throw new Error('rota desconhecida');
         broadcast();
@@ -1115,6 +1116,15 @@ function pump(cwd) {
     r.proc = null;
     r.current = null;
     reply.activity = '';
+    if (/not logged in|please run \/login|invalid api key|oauth token has expired/i.test(`${reply.text}\n${errTail}`)) {
+      reply.status = 'error';
+      reply.needsLogin = true;
+      reply.text =
+        '🔑 **O Claude Code deste computador não está logado** (ou o login expirou).\n\n' +
+        'Clique em **Entrar na conta do Claude** aqui embaixo: vai abrir uma janela do terminal com o Claude Code. ' +
+        'Nela, escolha entrar com a sua conta do Claude, termine o login no navegador e depois digite `/exit`.\n\n' +
+        'Pronto: é só mandar a sua mensagem de novo aqui no chat.';
+    }
     if (reply.status === 'running') reply.status = code === 0 ? 'done' : reply.stopped ? 'stopped' : 'error';
     if (reply.status === 'error' && !reply.text) {
       const notFound = err?.code === 'ENOENT' || /not recognized|não é reconhecido|command not found/i.test(errTail);
@@ -1137,10 +1147,32 @@ function interactiveLeadOnline(cwd) {
   return [...agents.values()].some((a) => !a.isSub && a.cwd === cwd && !r.sessionIds.has(a.id) && Date.now() - a.updatedAt < STALE_MS);
 }
 
+// abre um terminal com o Claude Code pra pessoa fazer o login (isso não dá pra fazer em segundo plano)
+function openLogin() {
+  if (process.platform === 'win32') {
+    spawn('cmd.exe', ['/c', 'start', '"Login do Claude Code"', 'powershell', '-NoExit', '-Command', 'claude'], { detached: true, stdio: 'ignore' }).unref();
+  } else if (process.platform === 'darwin') {
+    spawn('osascript', ['-e', 'tell application "Terminal" to do script "claude"'], { detached: true, stdio: 'ignore' }).unref();
+  } else {
+    throw new Error('abra um terminal e rode: claude');
+  }
+  return { opened: true };
+}
+
 async function leadSend({ cwd, text }) {
   const floorCwd = normCwd(cwd);
   const msg = String(text || '').trim().slice(0, 8000);
   if (!msg) throw new Error('mensagem vazia');
+  if (/^\/login\b/i.test(msg)) {
+    openLogin();
+    const at = new Date().toISOString();
+    chatOf(floorCwd).push(
+      { id: `U-${Date.now()}`, from: 'user', text: msg, at, status: 'sent' },
+      { id: `L-${Date.now() + 1}`, from: 'lead', text: 'Abri uma janela do terminal com o Claude Code pra você entrar na sua conta. Termine o login no navegador, digite `/exit` nela e mande sua mensagem de novo aqui.', at, status: 'done' },
+    );
+    saveChat(floorCwd);
+    return { route: 'login' };
+  }
   const team = teams.get(floorCwd);
   // tem task do time e uma sessão aberta no terminal/VS Code → entrega nela, como antes
   if (team?.task && interactiveLeadOnline(floorCwd)) {

@@ -144,6 +144,9 @@ No Telegram: escreva normalmente pra falar com o Líder, `/andares` troca de pro
 **"Não encontrei o Claude Code neste computador"**
 Feche o PowerShell, abra de novo e rode `claude --version`. Se não funcionar, reinstale com `npm install -g @anthropic-ai/claude-code`. Se ele estiver num caminho diferente, informe em `%USERPROFILE%\.agent-office\config.json`: `"claudePath": "C:/caminho/para/claude.exe"`.
 
+**O Líder responde "Not logged in" ou "o Claude Code não está logado"**
+O Claude Code do computador ainda não entrou na sua conta (ou o login expirou). Clique em **🔑 Entrar na conta do Claude** na resposta do Líder, ou abra o PowerShell e rode `claude`: escolha entrar com a sua conta do Claude, termine no navegador e digite `/exit`. Depois mande a mensagem de novo. O `/login` não funciona digitado no chat do escritório, porque ele precisa de uma janela de terminal.
+
 **O escritório não abre no navegador**
 Dê dois cliques no atalho de novo. Se ainda não abrir, veja se outro programa está usando a porta 4000 (feche e tente de novo) ou olhe o arquivo `%LOCALAPPDATA%\AgentOffice\app\office.log`.
 
