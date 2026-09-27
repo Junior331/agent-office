@@ -1531,7 +1531,14 @@ $building.addEventListener('click', (e) => {
 // ------------------------------------------------------------------ atualização
 
 const $update = document.getElementById('update-banner');
+const $version = document.getElementById('app-version');
 function renderUpdate(u) {
+  if (u?.current) {
+    $version.hidden = false;
+    $version.textContent = u.available ? `v${u.current} → v${u.latest}` : `v${u.current}`;
+    $version.classList.toggle('has-update', !!u.available);
+    $version.title = u.available ? 'Tem versão nova: veja o aviso logo abaixo' : 'Versão instalada';
+  }
   if (!u || (!u.available && !u.updating)) {
     $update.hidden = true;
     return;
