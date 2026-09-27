@@ -1150,7 +1150,8 @@ function interactiveLeadOnline(cwd) {
 // abre um terminal com o Claude Code pra pessoa fazer o login (isso não dá pra fazer em segundo plano)
 function openLogin() {
   if (process.platform === 'win32') {
-    spawn('cmd.exe', ['/c', 'start', '"Login do Claude Code"', 'powershell', '-NoExit', '-Command', 'claude'], { detached: true, stdio: 'ignore' }).unref();
+    // sem título com espaço: o Node escaparia as aspas e o `start` leria "do" como programa
+    spawn('cmd.exe', ['/c', 'start', 'powershell.exe', '-NoExit', '-Command', 'claude'], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   } else if (process.platform === 'darwin') {
     spawn('osascript', ['-e', 'tell application "Terminal" to do script "claude"'], { detached: true, stdio: 'ignore' }).unref();
   } else {
