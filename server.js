@@ -384,6 +384,7 @@ async function handleRequest(req, res) {
           : req.url === '/api/lead/stop' ? leadStop(data)
           : req.url === '/api/lead/mode' ? leadMode(data)
           : req.url === '/api/lead/login' ? openLogin()
+          : req.url === '/api/lead/retry' ? await leadRetry(data)
           : null;
         if (!result) throw new Error('rota desconhecida');
         broadcast();
@@ -531,6 +532,7 @@ function snapshot() {
     projects,
     leadChats: leadChatsOut,
     update: updateInfo,
+    login,
     agents: all.map((a) => (a.cwd ? a : { ...a, cwd: cwdOf(a) || null })),
     teams: [...teams.values()].map(({ reviews, ...t }) => ({ ...t, memberInfo: memberInfo[t.cwd] || {}, performance: perfByTeam[t.cwd] || null })),
     history: history.slice(0, 60),
@@ -1119,6 +1121,7 @@ function pump(cwd) {
     if (/not logged in|please run \/login|invalid api key|oauth token has expired/i.test(`${reply.text}\n${errTail}`)) {
       reply.status = 'error';
       reply.needsLogin = true;
+      if (login.status === 'ok') setLogin('idle');
       reply.text =
         '🔑 **O Claude Code deste computador não está logado** (ou o login expirou).\n\n' +
         'Clique em **Entrar na conta do Claude** aqui embaixo: vai abrir uma janela do terminal com o Claude Code. ' +
@@ -1147,17 +1150,99 @@ function interactiveLeadOnline(cwd) {
   return [...agents.values()].some((a) => !a.isSub && a.cwd === cwd && !r.sessionIds.has(a.id) && Date.now() - a.updatedAt < STALE_MS);
 }
 
-// abre um terminal com o Claude Code pra pessoa fazer o login (isso não dá pra fazer em segundo plano)
+// ---------------------------------------------------------------- login do Claude Code
+// Abre uma janela com o Claude Code, espera ela fechar e confere se o login funcionou de verdade.
+
+const login = { status: 'idle', message: '', at: null }; // idle | open | checking | ok | failed
+function setLogin(status, message = '') {
+  Object.assign(login, { status, message, at: new Date().toISOString() });
+  pushSoon();
+}
+
+// chamada mínima ao Claude Code: diz se está logado (e com acesso) ou não
+function probeLogin() {
+  return new Promise((resolve) => {
+    let out = '';
+    let proc;
+    try {
+      proc = spawnClaude(['-p', '--output-format', 'json', '--max-turns', '1'], homedir());
+    } catch {
+      return resolve({ ok: false, reason: 'Não consegui iniciar o Claude Code.' });
+    }
+    const timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* já saiu */
+      }
+      resolve({ ok: false, reason: 'O Claude Code demorou demais pra responder. Tente de novo.' });
+    }, 60_000);
+    proc.stdout.on('data', (c) => (out += c));
+    proc.stderr.on('data', (c) => (out += c));
+    proc.stdin.on('error', () => {});
+    proc.stdin.end('Responda apenas: ok');
+    proc.on('error', () => {
+      clearTimeout(timer);
+      resolve({ ok: false, reason: 'Não encontrei o Claude Code neste computador.' });
+    });
+    proc.on('close', () => {
+      clearTimeout(timer);
+      if (/not logged in|please run \/login|invalid api key|oauth token has expired/i.test(out)) {
+        return resolve({ ok: false, reason: 'O login não foi concluído: a janela foi fechada antes de terminar.' });
+      }
+      if (/"is_error"\s*:\s*true|subscription|credit balance|not available|upgrade/i.test(out)) {
+        const detail = (/"result"\s*:\s*"([^"]{0,200})/.exec(out) || [])[1];
+        return resolve({ ok: false, reason: `Entrou, mas a conta não conseguiu usar o Claude Code${detail ? `: ${detail}` : ''}. No plano gratuito ele não funciona; precisa do Pro/Max ou de créditos no Claude Console.` });
+      }
+      resolve({ ok: /"result"/.test(out) || /\bok\b/i.test(out), reason: 'Não consegui confirmar o login. Tente de novo.' });
+    });
+  });
+}
+
+async function finishLogin() {
+  setLogin('checking', 'Conferindo o login…');
+  const r = await probeLogin();
+  setLogin(r.ok ? 'ok' : 'failed', r.ok ? 'Login feito! Pode mandar a mensagem de novo.' : r.reason);
+}
+
 function openLogin() {
+  if (login.status === 'open' || login.status === 'checking') return { status: login.status };
   if (process.platform === 'win32') {
-    // sem título com espaço: o Node escaparia as aspas e o `start` leria "do" como programa
-    spawn('cmd.exe', ['/c', 'start', 'powershell.exe', '-NoExit', '-Command', 'claude'], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-  } else if (process.platform === 'darwin') {
-    spawn('osascript', ['-e', 'tell application "Terminal" to do script "claude"'], { detached: true, stdio: 'ignore' }).unref();
-  } else {
-    throw new Error('abra um terminal e rode: claude');
+    // processo "detached" no Windows ganha janela própria; o 'exit' avisa quando ela é fechada
+    const win = spawn('cmd.exe', ['/c', 'claude'], { detached: true, stdio: 'ignore', windowsHide: false });
+    win.on('error', () => setLogin('failed', 'Não consegui abrir a janela do terminal.'));
+    win.on('exit', () => finishLogin());
+    win.unref();
+    setLogin('open', 'Janela do terminal aberta: faça o login lá e depois digite /exit (ou feche a janela).');
+    return { status: 'open' };
   }
-  return { opened: true };
+  if (process.platform === 'darwin') {
+    // o Terminal do Mac não avisa quando fecha: confere o login de tempos em tempos (até 6 min)
+    spawn('osascript', ['-e', 'tell application "Terminal" to do script "claude"', '-e', 'tell application "Terminal" to activate'], { detached: true, stdio: 'ignore' }).unref();
+    setLogin('open', 'Terminal aberto: faça o login lá e depois digite /exit.');
+    const started = Date.now();
+    const tick = async () => {
+      if (login.status !== 'open') return;
+      const r = await probeLogin();
+      if (r.ok) return setLogin('ok', 'Login feito! Pode mandar a mensagem de novo.');
+      if (Date.now() - started > 6 * 60_000) return setLogin('failed', 'O login não foi concluído a tempo. Tente de novo.');
+      setTimeout(tick, 10_000);
+    };
+    setTimeout(tick, 15_000);
+    return { status: 'open' };
+  }
+  throw new Error('abra um terminal e rode: claude');
+}
+
+// reenvia a mensagem que falhou por falta de login
+async function leadRetry({ cwd, id }) {
+  const floorCwd = normCwd(cwd);
+  const failed = chatOf(floorCwd).find((e) => e.id === id);
+  const original = failed && chatOf(floorCwd).find((e) => e.id === failed.replyTo);
+  if (!original) throw new Error('não achei a mensagem original');
+  failed.retried = true;
+  if (login.status === 'ok' || login.status === 'failed') setLogin('idle');
+  return leadSend({ cwd: floorCwd, text: original.text });
 }
 
 async function leadSend({ cwd, text }) {
@@ -1166,10 +1251,19 @@ async function leadSend({ cwd, text }) {
   if (!msg) throw new Error('mensagem vazia');
   if (/^\/login\b/i.test(msg)) {
     openLogin();
+    // (o bloco abaixo registra a conversa; os botões de acompanhamento aparecem no chat)
     const at = new Date().toISOString();
     chatOf(floorCwd).push(
       { id: `U-${Date.now()}`, from: 'user', text: msg, at, status: 'sent' },
-      { id: `L-${Date.now() + 1}`, from: 'lead', text: 'Abri uma janela do terminal com o Claude Code pra você entrar na sua conta. Termine o login no navegador, digite `/exit` nela e mande sua mensagem de novo aqui.', at, status: 'done' },
+      {
+        id: `L-${Date.now() + 1}`,
+        from: 'lead',
+        text: 'Abri uma janela do terminal com o Claude Code pra você entrar na sua conta. Termine o login no navegador e digite `/exit` nela: eu confiro aqui se deu certo.',
+        at,
+        status: 'done',
+        needsLogin: true,
+        replyTo: [...chatOf(floorCwd)].reverse().find((e) => e.from === 'user' && !/^\/login\b/i.test(e.text))?.id,
+      },
     );
     saveChat(floorCwd);
     return { route: 'login' };
@@ -1247,15 +1341,17 @@ setTimeout(checkUpdate, 10_000);
 setInterval(checkUpdate, 6 * 60 * 60 * 1000);
 
 function startUpdate() {
-  if (process.platform !== 'win32') throw new Error('atualização automática só no Windows por enquanto; rode o instalador de novo');
   if (!updateInfo.available) throw new Error('já está na versão mais nova');
   updateInfo.updating = true;
   broadcast();
-  const child = spawn(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', join(ROOT, 'scripts', 'update.ps1'), '-Repo', UPDATE_REPO, '-App', ROOT],
-    { detached: true, stdio: 'ignore', windowsHide: true },
-  );
+  const child =
+    process.platform === 'win32'
+      ? spawn(
+          'powershell.exe',
+          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', join(ROOT, 'scripts', 'update.ps1'), '-Repo', UPDATE_REPO, '-App', ROOT],
+          { detached: true, stdio: 'ignore', windowsHide: true },
+        )
+      : spawn('bash', [join(ROOT, 'scripts', 'update.sh'), UPDATE_REPO, ROOT], { detached: true, stdio: 'ignore' });
   child.unref();
   return { updating: true };
 }

@@ -20,6 +20,18 @@ function Ask([string]$q) { $r = Read-Host "$q (S/n)"; return ($r -notmatch '^[nN
 Say ''
 Say '=== Escritorio de Agentes: instalacao ===' Cyan
 
+# 0. PowerShell com scripts bloqueados (padrao do Windows) impede o npm e o claude de rodarem no PowerShell
+$policy = Get-ExecutionPolicy
+if ($policy -in @('Restricted', 'AllSigned', 'Undefined')) {
+  Say "A execucao de scripts esta bloqueada neste PowerShell ($policy). O npm e o claude precisam dela." Yellow
+  if (Ask 'Liberar scripts locais so pro seu usuario (RemoteSigned, o padrao de quem programa)?') {
+    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+    Say 'Liberado.' Green
+  } else {
+    Say 'Tudo bem: o instalador segue usando o npm.cmd. Pra rodar o claude, use o Prompt de Comando (cmd).' Yellow
+  }
+}
+
 # 1. Node.js 18+
 if (-not (Has 'node')) {
   Say 'Node.js nao encontrado.' Yellow
@@ -37,7 +49,7 @@ Say "Node $(node -v) ok" Green
 if (-not (Has 'claude')) {
   Say 'Claude Code nao encontrado.' Yellow
   if (Ask 'Instalar agora (npm install -g @anthropic-ai/claude-code)?') {
-    npm install -g @anthropic-ai/claude-code
+    npm.cmd install -g @anthropic-ai/claude-code
     RefreshPath
   }
   if (-not (Has 'claude')) { Say 'Instale o Claude Code (https://docs.claude.com/claude-code) e rode este comando de novo.' Red; return }
@@ -64,7 +76,7 @@ Remove-Item $tmp -Recurse -Force
 
 Push-Location $App
 Say 'Instalando dependencias...'
-npm install --omit=dev --no-audit --no-fund --loglevel=error | Out-Null
+npm.cmd install --omit=dev --no-audit --no-fund --loglevel=error | Out-Null
 node setup.mjs
 Pop-Location
 
@@ -81,6 +93,6 @@ $lnk.Save()
 Say ''
 Say 'Pronto! Atalho "Escritorio de Agentes" criado na area de trabalho.' Green
 if ($needsLogin) {
-  Say 'Falta entrar na sua conta do Claude: abra um terminal, rode "claude" e siga o login. So precisa uma vez.' Yellow
+  Say 'Falta entrar na sua conta do Claude: abra um terminal, rode "claude" e siga o login (ou use o botao de login no chat do Lider). So precisa uma vez.' Yellow
 }
 Start-Process (Join-Path $env:WINDIR 'System32\wscript.exe') ('"' + (Join-Path $App 'scripts\launch.vbs') + '"')

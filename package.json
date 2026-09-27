@@ -1,6 +1,6 @@
 {
   "name": "agent-office",
-  "version": "0.2.4",
+  "version": "0.2.7",
   "description": "Escrit\u00f3rio virtual para times de agentes do Claude Code",
   "type": "module",
   "private": true,

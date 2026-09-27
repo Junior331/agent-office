@@ -12,11 +12,11 @@ Pela tela você conversa com o líder e com cada agente, aprova pedidos, contrat
 
 | Precisa ter | Por quê | Como conseguir |
 |---|---|---|
-| **Windows 10 ou 11** | É onde o instalador e a atualização automática funcionam | — |
+| **Windows 10/11, macOS ou Linux** | Veja a tabela de sistemas abaixo | — |
 | **Conta do Claude** (Pro, Max ou Team) ou chave de API da Anthropic | Os agentes usam a sua conta | [claude.ai](https://claude.ai) |
 | **Node.js 18 ou mais novo** | O escritório roda em Node | O instalador oferece instalar pra você |
 | **Claude Code** | É ele que faz o trabalho | O instalador oferece instalar pra você |
-| **Git para Windows** | O Claude Code no Windows precisa dele | [git-scm.com/download/win](https://git-scm.com/download/win) |
+| **Git para Windows** (só no Windows) | O Claude Code no Windows precisa dele | [git-scm.com/download/win](https://git-scm.com/download/win) |
 
 ### Sistemas operacionais
 
@@ -24,8 +24,8 @@ Pela tela você conversa com o líder e com cada agente, aprova pedidos, contrat
 |---|---|
 | **Windows 11** | ✅ Suportado e testado |
 | **Windows 10** | ✅ Suportado |
-| **macOS** | ⚠️ Experimental: instalação manual (veja [Instalação manual](#instalação-manual-macos-linux-ou-desenvolvimento)), sem atalho nem atualização automática |
-| **Linux** | ⚠️ Experimental: igual ao macOS |
+| **macOS** (Intel ou Apple Silicon) | 🧪 Beta: instalador de uma linha (veja [Instalação no macOS e Linux](#-instalação-no-macos-e-linux)) |
+| **Linux** | 🧪 Beta: igual ao macOS |
 
 ---
 
@@ -74,6 +74,40 @@ Dê dois cliques no atalho **Escritório de Agentes** na área de trabalho. Ele 
 
 ---
 
+## 🍎 Instalação no macOS e Linux
+
+### 1. Tenha o Node.js 18+
+
+No Mac, o jeito mais fácil é pelo [Homebrew](https://brew.sh): `brew install node`. Ou baixe em [nodejs.org](https://nodejs.org). (O instalador oferece instalar pelo Homebrew se ele já estiver no seu Mac.)
+
+### 2. Abra o Terminal e rode
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Junior331/agent-office/main/install.sh | bash
+```
+
+Ele confere o Node e o Claude Code (oferece instalar o Claude Code), baixa a última versão, instala e abre o escritório no navegador.
+
+- **macOS:** instala em `~/Library/Application Support/AgentOffice/app` e cria o app **Escritório de Agentes** em `~/Applications` (a pasta Aplicativos do seu usuário).
+- **Linux:** instala em `~/.local/share/agent-office/app`.
+- Nos dois: cria o comando `agent-office`, que abre o escritório.
+
+### 3. Entre na sua conta do Claude (só uma vez)
+
+```bash
+claude
+```
+
+Entre com a sua conta, termine no navegador e digite `/exit`.
+
+### 4. Abra o escritório
+
+Pelo app **Escritório de Agentes** (Mac), pelo comando `agent-office`, ou em [http://localhost:4000](http://localhost:4000). O resto é igual ao Windows: veja [Primeiro uso](#-primeiro-uso).
+
+> No macOS, na primeira vez que abrir o app, o sistema pode perguntar se pode rodar. Se bloquear, clique com o botão direito no app → **Abrir**.
+
+---
+
 ## 🧭 Primeiro uso
 
 ### Adicionar um projeto (um "andar")
@@ -116,7 +150,7 @@ Em todos os níveis a equipe segue regras de segurança: o QA não mexe no códi
 
 ## 🔄 Atualizações
 
-O escritório confere se há versão nova a cada 6 horas. Quando houver, aparece um aviso no painel com **Atualizar agora**: ele baixa, instala e volta sozinho, em cerca de 1 minuto.
+O escritório confere se há versão nova a cada 6 horas (a versão instalada aparece no canto do título). Quando houver, aparece um aviso no painel com **Atualizar agora**: ele baixa, instala e volta sozinho, em cerca de 1 minuto. Funciona no Windows, no macOS e no Linux.
 
 Também dá pra atualizar rodando de novo a linha do instalador.
 
@@ -144,8 +178,17 @@ No Telegram: escreva normalmente pra falar com o Líder, `/andares` troca de pro
 **"Não encontrei o Claude Code neste computador"**
 Feche o PowerShell, abra de novo e rode `claude --version`. Se não funcionar, reinstale com `npm install -g @anthropic-ai/claude-code`. Se ele estiver num caminho diferente, informe em `%USERPROFILE%\.agent-office\config.json`: `"claudePath": "C:/caminho/para/claude.exe"`.
 
+**"irm" não é reconhecido como um comando**
+Você colou no Prompt de Comando (cmd), não no PowerShell. Abra o **Windows PowerShell** (a linha começa com `PS C:\...`) ou, no cmd, rode:
+`powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Junior331/agent-office/main/install.ps1 | iex"`
+
+**"npm.ps1 (ou claude.ps1) não pode ser carregado porque a execução de scripts foi desabilitada"**
+É a política padrão do Windows. Rode uma vez no PowerShell e responda **S**:
+`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+e depois rode o instalador de novo. (Versões novas do instalador já oferecem fazer isso.)
+
 **O Líder responde "Not logged in" ou "o Claude Code não está logado"**
-O Claude Code do computador ainda não entrou na sua conta (ou o login expirou). Clique em **🔑 Entrar na conta do Claude** na resposta do Líder, ou abra o PowerShell e rode `claude`: escolha entrar com a sua conta do Claude, termine no navegador e digite `/exit`. Depois mande a mensagem de novo. O `/login` não funciona digitado no chat do escritório, porque ele precisa de uma janela de terminal.
+O Claude Code do computador ainda não entrou na sua conta (ou o login expirou). Clique em **🔑 Entrar na conta do Claude** na resposta do Líder, ou abra o PowerShell (Windows) / Terminal (Mac) e rode `claude`: escolha entrar com a sua conta do Claude, termine no navegador e digite `/exit`. Depois mande a mensagem de novo. O `/login` não funciona digitado no chat do escritório, porque ele precisa de uma janela de terminal.
 
 **O escritório não abre no navegador**
 Dê dois cliques no atalho de novo. Se ainda não abrir, veja se outro programa está usando a porta 4000 (feche e tente de novo) ou olhe o arquivo `%LOCALAPPDATA%\AgentOffice\app\office.log`.
@@ -190,7 +233,7 @@ Nenhum projeto seu é alterado pelo escritório, então não há nada pra limpar
 
 ---
 
-## 🛠️ Instalação manual (macOS, Linux ou desenvolvimento)
+## 🛠️ Instalação manual (desenvolvimento)
 
 Requisitos: Node 18+, Claude Code instalado e logado.
 
@@ -202,7 +245,7 @@ npm run setup
 npm start
 ```
 
-Abra [http://localhost:4000](http://localhost:4000). Depois disso, o escritório sobe sozinho sempre que você usar o Claude Code. No macOS e no Linux não há atalho nem atualização automática: pra atualizar, `git pull` e `npm run setup` de novo.
+Abra [http://localhost:4000](http://localhost:4000). Depois disso, o escritório sobe sozinho sempre que você usar o Claude Code. Pra atualizar a partir do código: `git pull` e `npm run setup` de novo.
 
 ### Comandos
 

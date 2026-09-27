@@ -27,7 +27,7 @@ try {
   Copy-Item "$src\*" $App -Recurse -Force
   Remove-Item $tmp -Recurse -Force
   Push-Location $App
-  npm install --omit=dev --no-audit --no-fund --loglevel=error | Out-Null
+  npm.cmd install --omit=dev --no-audit --no-fund --loglevel=error | Out-Null
   node setup.mjs | Out-Null
   Pop-Location
   Log "instalado"

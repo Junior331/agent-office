@@ -666,6 +666,7 @@ let allAgents = [];
 let allTeams = [];
 let allHistory = [];
 let leadChats = {};
+let loginState = { status: 'idle', message: '' };
 let projects = [];
 let floor = null;
 try {
@@ -1056,7 +1057,7 @@ function renderChat(force = false) {
   const quick = quickIds.map((id) => contacts.find((c) => c.id === id)).filter(Boolean);
 
   const lc = leadChats[t.cwd] || { entries: [], running: false, mode: 'equilibrado', route: 'office' };
-  const key = JSON.stringify([t.cwd, contact, chat.picker, chat.wide, search, [...unread].length, contacts.map((c) => [c.id, c.state, c.waiting]), thread.map((m) => [m.id, m.delivered, m.status, m.activity, (m.text || '').length, t.replies?.[m.id]?.text?.length || 0]), contact.id === 'lead' ? [lc.running, lc.mode, lc.route, lc.queued] : 0]);
+  const key = JSON.stringify([t.cwd, contact, chat.picker, chat.wide, search, [...unread].length, contacts.map((c) => [c.id, c.state, c.waiting]), thread.map((m) => [m.id, m.delivered, m.status, m.activity, (m.text || '').length, t.replies?.[m.id]?.text?.length || 0]), contact.id === 'lead' ? [lc.running, lc.mode, lc.route, lc.queued, loginState.status, loginState.message] : 0]);
   if (!force && key === chat.lastKey) return;
   chat.lastKey = key;
 
@@ -1121,6 +1122,26 @@ function leadBar(t, lc) {
   </div>`;
 }
 
+function lastLoginId(t) {
+  const list = leadChats[t.cwd]?.entries || [];
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].needsLogin) return list[i].id;
+  return null;
+}
+
+// botões do login, conforme o escritório acompanha a janela do terminal
+function loginControls(t, e) {
+  const st = loginState.status;
+  const msg = loginState.message ? `<p class="login-msg login-${esc(st)}">${esc(loginState.message)}</p>` : '';
+  if (st === 'open' || st === 'checking') {
+    return `${msg}<div class="actions"><button class="primary" disabled>⏳ ${st === 'open' ? 'Esperando você terminar o login…' : 'Conferindo o login…'}</button></div>`;
+  }
+  if (st === 'ok') {
+    return `${msg}<div class="actions" data-cwd="${esc(t.cwd)}"><button data-act="lead-retry" data-id="${esc(e.id)}" class="primary">↻ Tentar de novo</button></div>`;
+  }
+  const label = st === 'failed' ? '🔑 Tentar o login de novo' : '🔑 Entrar na conta do Claude';
+  return `${st === 'failed' ? msg : ''}<div class="actions"><button data-act="lead-login" class="primary">${label}</button></div>`;
+}
+
 function leadBubble(t, e, contact) {
   if (e.from === 'user') {
     const st = { queued: '⏳ na fila', sent: '✓ recebido', interrupted: '✓ recebido' }[e.status] || '✓';
@@ -1133,7 +1154,7 @@ function leadBubble(t, e, contact) {
     <div class="b-head"><strong>Líder</strong>${!running && e.text ? `<button class="copy" data-copy-lead="${esc(`${t.cwd}|${e.id}`)}" title="Copiar resposta">📋 Copiar</button>` : ''}</div>
     ${e.text ? `<div class="b-md">${markdown(e.text)}</div>` : ''}
     ${running ? `<div class="b-live"><span class="dots" aria-hidden="true"></span>${esc(e.activity || 'pensando…')}</div>` : ''}
-    ${e.needsLogin ? '<div class="actions"><button data-act="lead-login" class="primary">🔑 Entrar na conta do Claude</button></div>' : ''}
+    ${e.needsLogin && e.id === lastLoginId(t) && !e.retried ? loginControls(t, e) : ''}
     ${note || cost ? `<div class="b-meta b-meta-them">${[note, cost].filter(Boolean).join(' · ')}</div>` : ''}
   </div>`;
 }
@@ -1274,10 +1295,15 @@ $aside.addEventListener('click', async (e) => {
     btn.disabled = true;
     try {
       await post('/api/lead/login', {});
-      btn.textContent = '✔ Janela do terminal aberta';
     } catch (ex) {
+      btn.disabled = false;
       btn.textContent = ex.message;
     }
+    return;
+  }
+  if (act === 'lead-retry') {
+    btn.disabled = true;
+    await post('/api/lead/retry', { cwd: btn.closest('[data-cwd]').dataset.cwd, id: btn.dataset.id }).catch(() => (btn.disabled = false));
     return;
   }
   if (act === 'lead-stop') {
@@ -1581,6 +1607,7 @@ function connect(scene) {
       allTeams = msg.teams || [];
       allHistory = msg.history || [];
       leadChats = msg.leadChats || {};
+      loginState = msg.login || loginState;
       renderUpdate(msg.update);
       projects = msg.projects || [];
       applyFloor(scene);

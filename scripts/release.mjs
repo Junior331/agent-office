@@ -22,7 +22,7 @@ const stage = join(dist, 'agent-office');
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 const skip = new Set(['node_modules', 'dist', '.git', '.github', 'config.json', 'history.json', 'office.log', 'update.log']);
-for (const entry of ['server.js', 'setup.mjs', 'install.ps1', 'package.json', 'package-lock.json', 'README.md', 'kit', 'public', 'scripts']) {
+for (const entry of ['server.js', 'setup.mjs', 'install.ps1', 'install.sh', 'package.json', 'package-lock.json', 'README.md', 'kit', 'public', 'scripts']) {
   if (existsSync(join(ROOT, entry)) && !skip.has(entry)) cpSync(join(ROOT, entry), join(stage, entry), { recursive: true });
 }
 execSync('zip -rq agent-office.zip agent-office', { cwd: dist });
