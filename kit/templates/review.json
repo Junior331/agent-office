@@ -1,0 +1,16 @@
+{
+  "reviewer": "qa-e2e-1",
+  "reviewee": "fe-ui-1",
+  "round": 8,
+  "delivery": "ISS-DS-034 e ISS-DS-035 (gaveta mobile)",
+  "scores": {
+    "qualidade": 2,
+    "entrega": 3,
+    "escopo": 5,
+    "comunicacao": 4,
+    "colaboracao": 4
+  },
+  "comment": "A gaveta abriu, mas a ISS-DS-034 voltou pela segunda vez: o foco escapa do modal no 375px. Relatório claro e com evidência.",
+  "evidence": ["ISS-DS-034 reaberta 2x", "evidence/qa-e2e-1/gaveta-375.png"],
+  "at": "2026-09-24T12:00:00Z"
+}

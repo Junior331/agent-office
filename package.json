@@ -1,0 +1,19 @@
+{
+  "name": "agent-office",
+  "version": "0.1.0",
+  "description": "Escrit\u00f3rio virtual para times de agentes do Claude Code",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "simulate": "node scripts/simulate.mjs",
+    "telegram:setup": "node scripts/telegram-setup.mjs",
+    "setup": "node setup.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

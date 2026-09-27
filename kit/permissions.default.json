@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "backend_mode": "external",
+  "office": {
+    "url": "http://localhost:4000",
+    "wait_minutes": 20
+  },
+  "paths": {
+    "e2e": [
+      "e2e/**",
+      "tests/e2e/**",
+      "test/e2e/**",
+      "playwright/**",
+      "playwright.config.*",
+      "cypress/**",
+      "cypress.config.*"
+    ],
+    "backend": [
+      "backend/**",
+      "server/**",
+      "apps/api/**",
+      "apps/backend/**",
+      "services/api/**"
+    ],
+    "team": [
+      "@TEAM/tasks/**"
+    ]
+  },
+  "global": {
+    "write_deny": [
+      "@TEAM/permissions.json",
+      "@TEAM/roster.json",
+      "@TEAM/usage.json",
+      "@TEAM/efficiency.md",
+      "@TEAM/ACTIVE",
+      "@TEAM/project.json",
+      "@TEAM/tasks/*/grants.json",
+      "@TEAM/tasks/*/inbox.jsonl",
+      ".claude/settings*.json",
+      ".git/**",
+      ".env",
+      ".env.*",
+      "**/.env",
+      "**/.env.*",
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml"
+    ],
+    "read_deny": [
+      ".env",
+      ".env.*",
+      "**/.env",
+      "**/.env.*",
+      "**/*.pem",
+      "**/*.key",
+      "**/id_rsa*"
+    ],
+    "read_allow": [
+      "**/.env.example",
+      "**/.env.sample"
+    ],
+    "bash_deny": [
+      "\\bgit\\s+(commit|push|merge|rebase|reset|revert|cherry-pick|tag|stash\\s+(drop|clear)|clean|checkout\\s+--|restore|branch\\s+-[dD]|switch)\\b",
+      "\\brm\\s+-[a-zA-Z]*[rf]",
+      "\\b(rmdir|del|rd)\\s+/[sq]",
+      "\\b(npm|pnpm|yarn|bun)\\s+(i|install|add|remove|rm|uninstall|update|upgrade|up|publish|link)\\b",
+      "\\bnpx\\s+(prisma\\s+(migrate|db\\s+push|db\\s+seed)|sequelize|typeorm\\s+migration|knex\\s+migrate)",
+      "\\b(DROP|TRUNCATE|DELETE\\s+FROM|ALTER\\s+TABLE)\\b",
+      "\\bcurl\\b[^\\n]*\\s-X\\s*(POST|PUT|PATCH|DELETE)\\b",
+      "\\bcurl\\b[^\\n]*\\s(-d|--data|--data-raw|--data-binary|-F|--form)\\s",
+      "\\b(chmod|chown)\\s+-R\\b",
+      "\\bdocker\\s+(rm|rmi|system\\s+prune|volume\\s+rm|compose\\s+down\\s+-v)\\b",
+      "\\bcat\\b[^\\n|]*\\.env\\b",
+      "\\b(printenv|env)\\s*$",
+      "\\bsetx?\\s+[A-Z_]+="
+    ]
+  },
+  "roles": {
+    "frontend": {
+      "label": "Front",
+      "write_allow": [
+        "**"
+      ],
+      "write_deny": [
+        "@e2e",
+        "@backend"
+      ],
+      "bash_restricted_writes": false,
+      "bash_deny": []
+    },
+    "qa": {
+      "label": "QA",
+      "write_allow": [
+        "@e2e",
+        "@team"
+      ],
+      "write_deny": [],
+      "bash_restricted_writes": true,
+      "bash_write_allow": [
+        "@e2e",
+        "@team",
+        "test-results/**",
+        "playwright-report/**"
+      ],
+      "bash_deny": []
+    },
+    "designer": {
+      "label": "Designer",
+      "write_allow": [
+        "@team"
+      ],
+      "write_deny": [],
+      "bash_restricted_writes": true,
+      "bash_write_allow": [
+        "@team"
+      ],
+      "bash_deny": []
+    },
+    "backend": {
+      "label": "Back",
+      "write_allow": [
+        "@team"
+      ],
+      "write_allow_same_repo": [
+        "@backend"
+      ],
+      "write_deny": [],
+      "bash_restricted_writes": true,
+      "bash_write_allow": [
+        "@team"
+      ],
+      "bash_deny": []
+    }
+  }
+}

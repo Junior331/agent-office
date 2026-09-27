@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "policy": {
+    "auto_hire": true,
+    "auto_fire": true,
+    "max_active": 12,
+    "max_tasks_per_member": 5
+  },
+  "members": []
+}
