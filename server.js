@@ -1521,7 +1521,7 @@ function leadState(cwd) {
 
 const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const UPDATE_REPO = PKG.agentOffice?.repo || 'Junior331/agent-office';
-const updateInfo = { current: PKG.version, latest: null, notes: '', available: false, updating: false, checkedAt: null };
+const updateInfo = { current: PKG.version, latest: null, notes: '', available: false, updating: false, checkedAt: null, error: '' };
 
 const semver = (v) => String(v || '0').replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
 function newer(a, b) {
@@ -1550,7 +1550,21 @@ setInterval(checkUpdate, 6 * 60 * 60 * 1000);
 function startUpdate() {
   if (!updateInfo.available) throw new Error('já está na versão mais nova');
   updateInfo.updating = true;
+  updateInfo.error = '';
   broadcast();
+  // se em 4 minutos este mesmo servidor ainda estiver de pé, a atualização falhou: mostra o motivo
+  setTimeout(() => {
+    if (!updateInfo.updating) return;
+    let tail = '';
+    try {
+      tail = readFileSync(join(ROOT, 'update.log'), 'utf8').trim().split(/\r?\n/).slice(-4).join(' · ');
+    } catch {
+      tail = '';
+    }
+    updateInfo.updating = false;
+    updateInfo.error = `A atualização não terminou.${tail ? ` Último registro: ${tail}` : ''} Tente de novo, ou rode o instalador.`;
+    broadcast();
+  }, 4 * 60_000);
   const child =
     process.platform === 'win32'
       ? spawn(
@@ -1560,6 +1574,8 @@ function startUpdate() {
         )
       : spawn('bash', [join(ROOT, 'scripts', 'update.sh'), UPDATE_REPO, ROOT], { detached: true, stdio: 'ignore' });
   child.unref();
+  // sai sozinho logo depois: o atualizador instala por cima e sobe a versão nova
+  setTimeout(() => process.exit(0), 3000);
   return { updating: true };
 }
 

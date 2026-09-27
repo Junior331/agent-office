@@ -68,7 +68,7 @@ $src = (Get-ChildItem $tmp -Recurse -Filter server.js | Where-Object { $_.FullNa
 
 # 4. para o escritorio se estiver rodando e instala por cima (config.json e history.json ficam)
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-  Where-Object { $_.CommandLine -and $_.CommandLine -match 'server\.js' -and ($_.CommandLine -match 'AgentOffice' -or $_.CommandLine -match 'agent-office') } |
+  Where-Object { $_.CommandLine -and ($_.CommandLine -replace '/', '\') -match 'server\.js' -and ($_.CommandLine -match 'AgentOffice' -or $_.CommandLine -match 'agent-office') } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory $App -Force | Out-Null
 Copy-Item "$src\*" $App -Recurse -Force

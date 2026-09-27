@@ -18,10 +18,12 @@ try {
   $src = (Get-ChildItem $tmp -Recurse -Filter server.js | Where-Object { $_.FullName -notmatch 'node_modules' } | Select-Object -First 1).Directory.FullName
   Log "baixado"
 
-  $appRe = [regex]::Escape($App)
+  # o caminho pode vir com \ (atalho) ou / (quando sobe pelo Claude Code): compara normalizado
+  $appNorm = ($App -replace '/', '\').TrimEnd('\').ToLower()
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-    Where-Object { $_.CommandLine -and $_.CommandLine -match 'server\.js' -and $_.CommandLine -match $appRe } |
+    Where-Object { $_.CommandLine -and ($_.CommandLine -replace '/', '\').ToLower().Contains("$appNorm\server.js") } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Log "servidor antigo parado"
   Start-Sleep -Seconds 1
 
   Copy-Item "$src\*" $App -Recurse -Force

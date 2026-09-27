@@ -719,10 +719,16 @@ function preserve(container, render) {
   const selEnd = active?.selectionEnd;
   const scrolls = [...container.querySelectorAll('[data-scroll]')].map((el) => [el.dataset.scroll, el.scrollTop, el.scrollHeight - el.scrollTop - el.clientHeight < 40]);
   render();
+  const kept = new Set();
   for (const [key, top, atBottom] of scrolls) {
     const el = container.querySelector(`[data-scroll="${CSS.escape(key)}"]`);
-    if (el) el.scrollTop = atBottom ? el.scrollHeight : top;
+    if (el) {
+      el.scrollTop = atBottom ? el.scrollHeight : top;
+      kept.add(el);
+    }
   }
+  // lista que acabou de aparecer (abriu o chat, trocou de pessoa): começa na mensagem mais recente
+  for (const el of container.querySelectorAll('[data-scroll-bottom]')) if (!kept.has(el)) el.scrollTop = el.scrollHeight;
   if (focusKey) {
     const el = [...container.querySelectorAll('[data-draft]')].find((e) => e.dataset.draft === focusKey);
     if (el) {
@@ -1091,7 +1097,7 @@ function renderChat(force = false) {
 
       ${contact.id === 'lead' ? leadBar(t, lc) : ''}
 
-      <div class="thread" data-scroll="thread|${esc(t.cwd)}|${esc(contact.id)}">
+      <div class="thread" data-scroll="thread|${esc(t.cwd)}|${esc(contact.id)}" data-scroll-bottom>
         ${thread.length ? thread.map((m) => (m.lead ? leadBubble(t, m, contact) : bubble(t, m, contact))).join('') : `<p class="hint">Nenhuma conversa com ${esc(contact.name)} ainda. ${contact.id === 'lead' ? (t.task ? 'Pergunte o andamento, peça um plano, mude prioridades…' : 'Diga o que você quer fazer neste projeto. Ex.: <code>/team criar a tela de login seguindo o Figma …</code> ou só uma pergunta sobre o código.') : 'A mensagem chega nele na próxima ação (ou via líder, se ele não estiver rodando).'}</p>`}
       </div>
 
@@ -1678,7 +1684,18 @@ $building.addEventListener('click', (e) => {
 
 const $update = document.getElementById('update-banner');
 const $version = document.getElementById('app-version');
+let firstVersion = null;
 function renderUpdate(u) {
+  // o servidor voltou com outra versão (atualizou): recarrega pra pegar a tela nova
+  if (u?.current) {
+    if (firstVersion && u.current !== firstVersion) return location.reload();
+    firstVersion ||= u.current;
+  }
+  if (u?.error) {
+    $update.hidden = false;
+    $update.innerHTML = `⚠️ ${esc(u.error)} ${u.available ? '<button data-act-update>Tentar de novo</button>' : ''}`;
+    return;
+  }
   if (u?.current) {
     $version.hidden = false;
     $version.textContent = u.available ? `v${u.current} → v${u.latest}` : `v${u.current}`;
