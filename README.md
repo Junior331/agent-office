@@ -9,10 +9,15 @@ Escritório virtual pra times de agentes do Claude Code: cada projeto é um anda
 
 ## Instalar (uma vez)
 
+No PowerShell:
+
 ```
-npm install
-npm run setup
+irm https://raw.githubusercontent.com/Junior331/agent-office/main/install.ps1 | iex
 ```
+
+O instalador confere o Node e o Claude Code (oferece instalar o que faltar), baixa a última versão, instala em `%LOCALAPPDATA%\AgentOffice\app` e cria o atalho **Escritório de Agentes** na área de trabalho. Rodar de novo atualiza.
+
+Instalação manual (desenvolvimento): `npm install` e `npm run setup` na pasta do código.
 
 O setup instala tudo **no seu usuário**, nada dentro dos projetos:
 - `~/.agent-office/kit` — protocolo, templates e hooks
@@ -43,6 +48,19 @@ npm run setup -- uninstall                  remove agentes, comandos e hooks (os
 npm run telegram:setup -- <TOKEN_DO_BOT>    liga o Telegram
 npm run simulate                            agentes de mentira pra testar a tela
 ```
+
+## Atualizações
+
+O escritório confere o GitHub a cada 6 horas. Quando sai versão nova, aparece um aviso com **Atualizar agora**: ele baixa, instala e volta sozinho.
+
+Pra publicar uma versão (quem mantém o projeto):
+
+```
+git tag v0.3.0 -m "o que mudou"
+git push origin v0.3.0
+```
+
+O GitHub Actions monta o `agent-office.zip` e o `version.json` e cria a release.
 
 ## Telegram
 

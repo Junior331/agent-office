@@ -363,6 +363,16 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/api/update') {
+    try {
+      const r = startUpdate();
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, ...r }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
+
   if (req.method === 'POST' && req.url.startsWith('/api/lead/')) {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -519,6 +529,7 @@ function snapshot() {
     type: 'agents',
     projects,
     leadChats: leadChatsOut,
+    update: updateInfo,
     agents: all.map((a) => (a.cwd ? a : { ...a, cwd: cwdOf(a) || null })),
     teams: [...teams.values()].map(({ reviews, ...t }) => ({ ...t, memberInfo: memberInfo[t.cwd] || {}, performance: perfByTeam[t.cwd] || null })),
     history: history.slice(0, 60),
@@ -1169,6 +1180,51 @@ function leadState(cwd) {
     mode: readMeta(cwd).lead_mode || 'equilibrado',
     route: teams.get(cwd)?.task && interactiveLeadOnline(cwd) ? 'inbox' : 'office',
   };
+}
+
+
+// ---------------------------------------------------------------- atualização automática
+
+const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+const UPDATE_REPO = PKG.agentOffice?.repo || 'Junior331/agent-office';
+const updateInfo = { current: PKG.version, latest: null, notes: '', available: false, updating: false, checkedAt: null };
+
+const semver = (v) => String(v || '0').replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+function newer(a, b) {
+  const [x, y] = [semver(a), semver(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+
+async function checkUpdate() {
+  try {
+    const res = await fetch(`https://github.com/${UPDATE_REPO}/releases/latest/download/version.json`, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return;
+    const info = await res.json();
+    updateInfo.latest = info.version;
+    updateInfo.notes = info.notes || '';
+    updateInfo.available = newer(info.version, PKG.version);
+    updateInfo.checkedAt = new Date().toISOString();
+    broadcast();
+  } catch {
+    /* sem internet ou sem release ainda: tenta mais tarde */
+  }
+}
+setTimeout(checkUpdate, 10_000);
+setInterval(checkUpdate, 6 * 60 * 60 * 1000);
+
+function startUpdate() {
+  if (process.platform !== 'win32') throw new Error('atualização automática só no Windows por enquanto; rode o instalador de novo');
+  if (!updateInfo.available) throw new Error('já está na versão mais nova');
+  updateInfo.updating = true;
+  broadcast();
+  const child = spawn(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', join(ROOT, 'scripts', 'update.ps1'), '-Repo', UPDATE_REPO, '-App', ROOT],
+    { detached: true, stdio: 'ignore', windowsHide: true },
+  );
+  child.unref();
+  return { updating: true };
 }
 
 // ---------------------------------------------------------------- andares: adicionar pela tela

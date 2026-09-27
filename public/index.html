@@ -62,6 +62,9 @@
     .fd-list li span { display: flex; flex-direction: column; min-width: 0; }
     .fd-list small { color: var(--muted); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .fd-list em { color: var(--muted); font-size: .75rem; font-style: normal; white-space: nowrap; }
+    .update-banner { margin: 0 12px 10px; padding: 8px 10px; background: #1f3a2c; border-left: 4px solid var(--ok); font-size: .8rem; }
+    .update-banner span { color: var(--muted); display: block; margin-top: 2px; }
+    .update-banner button { margin-top: 6px; font-family: var(--pixel); font-size: 1.1rem; color: var(--text); background: #2e7d4f; border: 2px solid #6fdc8c; padding: 2px 12px; cursor: pointer; }
     .chat-floor { margin: 0; font-size: .75rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .m-tokens { margin: 3px 0 0; font-size: .72rem; color: #ffd54f; }
     .team-tokens { margin: -2px 2px 6px; font-size: .74rem; color: #ffd54f; }
@@ -346,6 +349,7 @@
           <p id="conn" class="conn" data-on="false">Conectando ao servidor…</p>
         </div>
       </header>
+      <div id="update-banner" class="update-banner" role="status" hidden></div>
       <nav class="tabs" role="tablist" aria-label="Seções do painel">
         <button role="tab" data-tab="team" aria-selected="true">Equipe</button>
         <button role="tab" data-tab="chat" aria-selected="false">Chat <span id="chat-badge" class="badge" hidden></span></button>

@@ -1,7 +1,7 @@
 {
   "name": "agent-office",
-  "version": "0.1.0",
-  "description": "Escrit\u00f3rio virtual para times de agentes do Claude Code",
+  "version": "0.2.0",
+  "description": "Escritório virtual para times de agentes do Claude Code",
   "type": "module",
   "private": true,
   "engines": {
@@ -15,5 +15,8 @@
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "agentOffice": {
+    "repo": "Junior331/agent-office"
   }
 }

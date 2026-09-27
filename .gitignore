@@ -1,4 +1,7 @@
+node_modules/
+dist/
+config.json
 history.json
 office.log
-node_modules/
-config.json
+update.log
+*.bak

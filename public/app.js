@@ -1517,6 +1517,29 @@ $building.addEventListener('click', (e) => {
   if (b) setFloor(b.dataset.floor);
 });
 
+// ------------------------------------------------------------------ atualização
+
+const $update = document.getElementById('update-banner');
+function renderUpdate(u) {
+  if (!u || (!u.available && !u.updating)) {
+    $update.hidden = true;
+    return;
+  }
+  $update.hidden = false;
+  $update.innerHTML = u.updating
+    ? '⏳ Atualizando… o escritório volta sozinho em cerca de 1 minuto.'
+    : `🆕 Versão ${esc(u.latest)} disponível (você tem ${esc(u.current)}).${u.notes ? ` <span>${esc(u.notes)}</span>` : ''} <button data-act-update>Atualizar agora</button>`;
+}
+$update.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-act-update]')) return;
+  e.target.disabled = true;
+  try {
+    await post('/api/update', {});
+  } catch (ex) {
+    $update.textContent = `Não deu pra atualizar: ${ex.message}`;
+  }
+});
+
 function renderAll() {
   renderTeams();
   renderChat();
@@ -1540,6 +1563,7 @@ function connect(scene) {
       allTeams = msg.teams || [];
       allHistory = msg.history || [];
       leadChats = msg.leadChats || {};
+      renderUpdate(msg.update);
       projects = msg.projects || [];
       applyFloor(scene);
     }
