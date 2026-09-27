@@ -749,6 +749,7 @@ function showTab(name) {
   document.querySelector('.roster').classList.toggle('wide', chat.wide && name === 'chat');
   window.dispatchEvent(new Event('resize'));
   if (name === 'chat') renderChat(true);
+  if (name === 'files') loadFiles(true);
 }
 $tabs.forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
@@ -1094,9 +1095,12 @@ function renderChat(force = false) {
         ${thread.length ? thread.map((m) => (m.lead ? leadBubble(t, m, contact) : bubble(t, m, contact))).join('') : `<p class="hint">Nenhuma conversa com ${esc(contact.name)} ainda. ${contact.id === 'lead' ? (t.task ? 'Pergunte o andamento, peça um plano, mude prioridades…' : 'Diga o que você quer fazer neste projeto. Ex.: <code>/team criar a tela de login seguindo o Figma …</code> ou só uma pergunta sobre o código.') : 'A mensagem chega nele na próxima ação (ou via líder, se ele não estiver rodando).'}</p>`}
       </div>
 
-      <div class="composer" data-cwd="${esc(t.cwd)}" data-task="${esc(t.task)}" data-to="${esc(contact.id)}">
-        <textarea data-draft="${esc(draftKey)}" rows="2" placeholder="Mensagem pra ${esc(contact.name)}… (Enter envia · Shift+Enter quebra linha)">${esc(drafts[draftKey] || '')}</textarea>
+      <div class="composer" data-cwd="${esc(t.cwd)}" data-task="${esc(t.task)}" data-to="${esc(contact.id)}" data-draft-key="${esc(draftKey)}">
+        ${pendingChips(draftKey)}
+        <button data-act="attach" class="attach-btn" title="Anexar arquivo ou print (também dá pra colar com Ctrl+V ou arrastar)" aria-label="Anexar arquivo">📎</button>
+        <textarea data-draft="${esc(draftKey)}" rows="2" placeholder="Mensagem pra ${esc(contact.name)}… (Enter envia · Ctrl+V cola print)">${esc(drafts[draftKey] || '')}</textarea>
         <button data-act="send" class="primary send" title="Enviar">Enviar</button>
+        <input type="file" data-file-input multiple hidden />
         <p class="form-error" hidden></p>
       </div>`;
   });
@@ -1122,6 +1126,66 @@ function leadBar(t, lc) {
   </div>`;
 }
 
+// ------------------------------------------------------------------ anexos no chat
+
+const pending = {}; // draftKey → [{ tmp, name, type, size, uploading, error, attachment }]
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const fileUrl = (cwd, a) => `/api/file?cwd=${encodeURIComponent(cwd)}&f=${encodeURIComponent(a.rel)}`;
+
+function pendingChips(key) {
+  const list = pending[key] || [];
+  if (!list.length) return '';
+  return `<ul class="pending">${list
+    .map((p, i) => `<li class="${p.error ? 'p-err' : ''}">
+        ${p.preview ? `<img src="${p.preview}" alt="" />` : '<span class="p-icon">📄</span>'}
+        <span class="p-name" title="${esc(p.name)}">${esc(p.name)}</span>
+        <small>${p.error ? esc(p.error) : p.uploading ? 'enviando…' : fmtSize(p.size)}</small>
+        <button data-act="unattach" data-i="${i}" aria-label="Remover ${esc(p.name)}">✕</button>
+      </li>`)
+    .join('')}</ul>`;
+}
+
+function attachmentsHtml(cwd, list) {
+  if (!list?.length) return '';
+  const imgs = list.filter((a) => a.type?.startsWith('image/') && !a.type.includes('svg'));
+  const files = list.filter((a) => !imgs.includes(a));
+  return `<div class="b-att">${imgs
+    .map((a) => `<a href="${fileUrl(cwd, a)}" target="_blank" rel="noopener" title="${esc(a.name)}"><img src="${fileUrl(cwd, a)}" alt="${esc(a.name)}" loading="lazy" /></a>`)
+    .join('')}${files
+    .map((a) => `<a class="b-file" href="${fileUrl(cwd, a)}" target="_blank" rel="noopener">📄 ${esc(a.name)} <small>${fmtSize(a.size)}</small></a>`)
+    .join('')}</div>`;
+}
+
+async function addFiles(composer, fileList) {
+  const key = composer.dataset.draftKey;
+  const cwd = composer.dataset.cwd;
+  const list = (pending[key] ||= []);
+  for (const file of [...fileList].slice(0, 10 - list.length)) {
+    const item = { name: file.name || `print-${Date.now()}.png`, type: file.type, size: file.size, uploading: true };
+    if (file.type.startsWith('image/')) item.preview = URL.createObjectURL(file);
+    list.push(item);
+    renderChat(true);
+    if (file.size > 15 * 1024 * 1024) {
+      Object.assign(item, { uploading: false, error: 'maior que 15 MB' });
+      renderChat(true);
+      continue;
+    }
+    try {
+      const data = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = () => rej(new Error('não consegui ler o arquivo'));
+        r.readAsDataURL(file);
+      });
+      const out = await post('/api/attach', { cwd, name: item.name, type: file.type, data });
+      Object.assign(item, { uploading: false, attachment: out.attachment });
+    } catch (ex) {
+      Object.assign(item, { uploading: false, error: ex.message });
+    }
+    renderChat(true);
+  }
+}
+
 function lastLoginId(t) {
   const list = leadChats[t.cwd]?.entries || [];
   for (let i = list.length - 1; i >= 0; i--) if (list[i].needsLogin) return list[i].id;
@@ -1145,7 +1209,7 @@ function loginControls(t, e) {
 function leadBubble(t, e, contact) {
   if (e.from === 'user') {
     const st = { queued: '⏳ na fila', sent: '✓ recebido', interrupted: '✓ recebido' }[e.status] || '✓';
-    return `<div class="bubble me"><div class="b-text">${esc(e.text)}</div><div class="b-meta">${fmtTime(e.at)} · ${st}</div></div>`;
+    return `<div class="bubble me">${attachmentsHtml(t.cwd, e.attachments)}<div class="b-text">${esc(e.text)}</div><div class="b-meta">${fmtTime(e.at)} · ${st}</div></div>`;
   }
   const running = e.status === 'running';
   const note = { error: '⚠️ terminou com erro', stopped: '■ parado por você', interrupted: '■ interrompido (o escritório fechou)' }[e.status];
@@ -1162,11 +1226,11 @@ function leadBubble(t, e, contact) {
 function bubble(t, m, contact) {
   const reply = t.replies?.[m.id];
   const kindIcon = m.kind === 'hire' ? '🧑‍💼 ' : m.kind === 'fire' ? '🚪 ' : '';
-  const shown = m.kind === 'hire' ? `Contratar ${m.hire?.count > 1 ? `${m.hire.count}× ` : ''}${m.hire?.title}: ${m.hire?.task}` : m.kind === 'fire' ? `Desligar ${m.fire?.name}${m.fire?.reason ? ': ' + m.fire.reason : ''}` : m.text;
+  const shown = m.kind === 'hire' ? `Contratar ${m.hire?.count > 1 ? `${m.hire.count}× ` : ''}${m.hire?.title}: ${m.hire?.task}` : m.kind === 'fire' ? `Desligar ${m.fire?.name}${m.fire?.reason ? ': ' + m.fire.reason : ''}` : m.display ?? m.text;
   const status = reply ? '💬 respondeu' : m.delivered ? '✓ entregue' : '⏳ aguardando entrega';
   const replier = reply ? rosterEntry(t, reply.from).name || ROLE_LABEL[reply.from] || contact.name : '';
   return `<div class="bubble me">
-      <div class="b-text">${kindIcon}${esc(shown)}</div>
+      ${attachmentsHtml(t.cwd, m.attachments)}<div class="b-text">${kindIcon}${esc(shown)}</div>
       <div class="b-meta">${fmtTime(m.at)} · ${status}</div>
     </div>
     ${reply ? `<div class="bubble them" style="--c:${esc(contact.color)}">
@@ -1242,6 +1306,38 @@ $aside.addEventListener('toggle', (e) => {
   if (e.target.dataset?.openKey) drafts[e.target.dataset.openKey] = e.target.open;
 }, true);
 
+$chat.addEventListener('change', (e) => {
+  if (e.target.matches('[data-file-input]') && e.target.files.length) {
+    addFiles(e.target.closest('.composer'), e.target.files);
+    e.target.value = '';
+  }
+});
+$chat.addEventListener('paste', (e) => {
+  const composer = e.target.closest?.('.composer');
+  const files = [...(e.clipboardData?.files || [])];
+  if (composer && files.length) {
+    e.preventDefault();
+    addFiles(composer, files);
+  }
+});
+$chat.addEventListener('dragover', (e) => {
+  if ([...(e.dataTransfer?.types || [])].includes('Files')) {
+    e.preventDefault();
+    $chat.classList.add('dropping');
+  }
+});
+$chat.addEventListener('dragleave', (e) => {
+  if (e.target === $chat || !$chat.contains(e.relatedTarget)) $chat.classList.remove('dropping');
+});
+$chat.addEventListener('drop', (e) => {
+  $chat.classList.remove('dropping');
+  const composer = $chat.querySelector('.composer');
+  if (composer && e.dataTransfer?.files?.length) {
+    e.preventDefault();
+    addFiles(composer, e.dataTransfer.files);
+  }
+});
+
 $chat.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && chat.picker) {
     chat.picker = false;
@@ -1291,6 +1387,17 @@ $aside.addEventListener('click', async (e) => {
   if (!btn) return;
   const act = btn.dataset.act;
 
+  if (act === 'attach') {
+    btn.closest('.composer').querySelector('[data-file-input]').click();
+    return;
+  }
+  if (act === 'unattach') {
+    const key = btn.closest('.composer').dataset.draftKey;
+    const [item] = (pending[key] || []).splice(Number(btn.dataset.i), 1);
+    if (item?.preview) URL.revokeObjectURL(item.preview);
+    renderChat(true);
+    return;
+  }
   if (act === 'lead-login') {
     btn.disabled = true;
     try {
@@ -1386,8 +1493,15 @@ $aside.addEventListener('click', async (e) => {
 
   let url;
   let body;
-  if (act === 'send' && box.dataset.to === 'lead') [url, body] = ['/api/lead/send', { cwd: base.cwd, text: textarea.value }];
-  else if (act === 'send') [url, body] = ['/api/team/message', { ...base, to: box.dataset.to, text: textarea.value }];
+  const files = act === 'send' ? (pending[box.dataset.draftKey] || []) : [];
+  if (files.some((f) => f.uploading)) {
+    err.textContent = 'Espere os anexos terminarem de enviar.';
+    err.hidden = false;
+    return;
+  }
+  const attachments = files.filter((f) => f.attachment).map((f) => f.attachment);
+  if (act === 'send' && box.dataset.to === 'lead') [url, body] = ['/api/lead/send', { cwd: base.cwd, text: textarea.value, attachments }];
+  else if (act === 'send') [url, body] = ['/api/team/message', { ...base, to: box.dataset.to, text: textarea.value, attachments }];
   else if (act === 'hire') [url, body] = ['/api/team/hire', { ...base, ...fields }];
   else if (act === 'fire') [url, body] = ['/api/team/fire', { ...base, member: box.dataset.member, reason: textarea.value }];
   else [url, body] = ['/api/team/answer', { ...base, id: box.dataset.id, decision: act, text: textarea.value }];
@@ -1406,6 +1520,11 @@ $aside.addEventListener('click', async (e) => {
       openChat(base.cwd, 'lead');
     }
     if (act === 'hire') openChat(base.cwd, 'lead');
+    if (act === 'send' && box.dataset.draftKey) {
+      for (const f of pending[box.dataset.draftKey] || []) if (f.preview) URL.revokeObjectURL(f.preview);
+      delete pending[box.dataset.draftKey];
+      renderChat(true);
+    }
     if (err) err.hidden = true;
   } catch (ex) {
     if (err) {
@@ -1431,6 +1550,7 @@ function applyFloor(scene, changed = false) {
   currentTeams = allTeams.filter((t) => t.cwd === floor);
   currentHistory = allHistory.filter((h) => !h.cwd || h.cwd === floor);
   if (changed) {
+    files.rev = -1;
     scene.clearFloor();
     chat.cwd = floor;
     chat.contact = 'lead';
@@ -1584,6 +1704,212 @@ $update.addEventListener('click', async (e) => {
   }
 });
 
+// ------------------------------------------------------------------ aba Arquivos (galeria do andar)
+
+const $files = document.getElementById('files');
+const $lightbox = document.getElementById('lightbox');
+const files = { cwd: null, rev: -1, list: [], filter: 'all', search: '', loading: false, lbIndex: 0 };
+const KIND = {
+  all: 'Todos',
+  image: 'Imagens',
+  doc: 'Documentos',
+  font: 'Fontes',
+  other: 'Outros',
+};
+function kindOf(f) {
+  if (/^image\//.test(f.type)) return 'image';
+  if (/^font\/|\.(ttf|otf|woff2?)$/i.test(f.type + ' ' + f.name)) return 'font';
+  if (/pdf|text\/|json|csv|markdown|wordprocessing|spreadsheet/i.test(f.type) || /\.(pdf|txt|md|csv|json|docx|xlsx)$/i.test(f.name)) return 'doc';
+  return 'other';
+}
+const SOURCE = { chat: 'pelo chat', gallery: 'pela galeria', telegram: 'pelo Telegram' };
+
+async function loadFiles(force = false) {
+  if (!floor) {
+    $files.innerHTML = '<p class="hint">Escolha um andar no prédio.</p>';
+    return;
+  }
+  const rev = projects.find((p) => p.cwd === floor)?.filesRev ?? 0;
+  if (!force && files.cwd === floor && files.rev === rev) return;
+  files.cwd = floor;
+  files.rev = rev;
+  try {
+    const r = await fetch(`/api/files?cwd=${encodeURIComponent(floor)}`).then((x) => x.json());
+    files.list = r.files || [];
+  } catch {
+    files.list = [];
+  }
+  renderFiles();
+}
+
+const fontsLoaded = new Set();
+function loadFontPreview(f) {
+  const family = `att-${f.rel.replace(/[^a-z0-9]/gi, '')}`;
+  if (!fontsLoaded.has(family) && 'FontFace' in window) {
+    fontsLoaded.add(family);
+    new FontFace(family, `url(${fileUrl(files.cwd, f)})`).load().then((ff) => document.fonts.add(ff)).catch(() => {});
+  }
+  return family;
+}
+
+function fileActions(f) {
+  return `<div class="f-acts">
+    <a href="${fileUrl(files.cwd, f)}" download="${esc(f.name)}">⬇ Baixar</a>
+    <button data-f="use" data-rel="${esc(f.rel)}">📎 Usar no chat</button>
+    <button data-f="copy" data-rel="${esc(f.rel)}">📋 Caminho</button>
+    <button data-f="del" data-rel="${esc(f.rel)}" class="f-del">🗑</button>
+  </div>`;
+}
+
+function renderFiles() {
+  const q = files.search.toLowerCase();
+  const counts = { all: files.list.length, image: 0, doc: 0, font: 0, other: 0 };
+  for (const f of files.list) counts[kindOf(f)]++;
+  const shown = files.list.filter((f) => (files.filter === 'all' || kindOf(f) === files.filter) && (!q || f.name.toLowerCase().includes(q)));
+  const byDay = new Map();
+  for (const f of shown) {
+    if (!byDay.has(f.day)) byDay.set(f.day, []);
+    byDay.get(f.day).push(f);
+  }
+  const project = projects.find((p) => p.cwd === floor)?.name || '';
+  const days = [...byDay.entries()];
+  const fmtDay = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  $files.innerHTML = `
+    <div class="f-head"><h3>📁 ${esc(project)} · ${files.list.length}</h3><button data-f="upload">📤 Enviar arquivos</button><input type="file" data-files-input multiple hidden /></div>
+    <div class="f-filters">${Object.entries(KIND)
+      .map(([k, l]) => `<button data-filter="${k}" aria-pressed="${files.filter === k}">${l} ${counts[k]}</button>`)
+      .join('')}</div>
+    <input type="search" data-files-search placeholder="Buscar pelo nome…" value="${esc(files.search)}" />
+    ${!files.list.length ? '<p class="hint">Nenhum arquivo neste andar ainda. Anexe prints e documentos pelo chat, arraste arquivos pra cá ou use <b>📤 Enviar arquivos</b> (logos, fontes, PDFs de requisito…). Ficam guardados fora do projeto e qualquer agente pode usar.</p>' : ''}
+    ${files.list.length && !shown.length ? '<p class="hint">Nada com esse filtro.</p>' : ''}
+    ${days
+      .map(([day, list], i) => {
+        const imgs = list.filter((f) => kindOf(f) === 'image');
+        const rest = list.filter((f) => kindOf(f) !== 'image');
+        return `<details class="f-day"${i < 3 ? ' open' : ''}>
+          <summary>📂 ${esc(fmtDay(day))}<small>${list.length} arquivo${list.length > 1 ? 's' : ''}</small></summary>
+          ${imgs.length ? `<div class="f-grid">${imgs
+            .map((f) => `<div class="f-thumb">
+              <button class="f-open" data-f="view" data-rel="${esc(f.rel)}" title="${esc(f.name)}"><img src="${fileUrl(files.cwd, f)}" alt="${esc(f.name)}" loading="lazy" /></button>
+              <div class="f-cap" title="${esc(f.name)}">${esc(f.name)}</div>${fileActions(f)}</div>`)
+            .join('')}</div>` : ''}
+          ${rest.length ? `<ul class="f-list">${rest
+            .map((f) => {
+              const k = kindOf(f);
+              const icon = { font: '🔤', doc: '📄', other: '📦' }[k];
+              return `<li class="f-item">
+                <div class="f-top">${icon} <b>${esc(f.name)}</b><small>${fmtSize(f.size)}</small></div>
+                ${k === 'font' ? `<div class="f-font" style="font-family:'${loadFontPreview(f)}', var(--body)">Aa Bb Cc 123 · Olá, mundo</div>` : ''}
+                <div class="f-used">${fmtTime(f.at)} · ${SOURCE[f.source] || ''}${f.used.length ? ` · enviado pra ${esc([...new Set(f.used.map((u) => u.to))].join(', '))}` : ''}</div>
+                ${fileActions(f)}
+              </li>`;
+            })
+            .join('')}</ul>` : ''}
+        </details>`;
+      })
+      .join('')}`;
+}
+
+async function uploadToGallery(fileList) {
+  for (const file of [...fileList].slice(0, 20)) {
+    if (file.size > 15 * 1024 * 1024) continue;
+    const data = await new Promise((res) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.readAsDataURL(file);
+    });
+    await post('/api/attach', { cwd: files.cwd, name: file.name, type: file.type, data, source: 'gallery' }).catch(() => {});
+  }
+  loadFiles(true);
+}
+
+function openLightbox(rel) {
+  const imgs = files.list.filter((f) => kindOf(f) === 'image');
+  files.lbIndex = Math.max(0, imgs.findIndex((f) => f.rel === rel));
+  showLightbox();
+  $lightbox.showModal();
+}
+function showLightbox() {
+  const imgs = files.list.filter((f) => kindOf(f) === 'image');
+  const f = imgs[(files.lbIndex + imgs.length) % imgs.length];
+  if (!f) return;
+  $lightbox.querySelector('img').src = fileUrl(files.cwd, f);
+  $lightbox.querySelector('img').alt = f.name;
+  $lightbox.querySelector('.lb-name').textContent = `${f.name} · ${fmtSize(f.size)}`;
+}
+$lightbox.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lb]');
+  if (e.target === $lightbox || b?.dataset.lb === 'close') return $lightbox.close();
+  if (b) {
+    files.lbIndex += b.dataset.lb === 'next' ? 1 : -1;
+    showLightbox();
+  }
+});
+$lightbox.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    files.lbIndex += e.key === 'ArrowRight' ? 1 : -1;
+    showLightbox();
+  }
+});
+
+$files.addEventListener('click', async (e) => {
+  const flt = e.target.closest('[data-filter]');
+  if (flt) {
+    files.filter = flt.dataset.filter;
+    return renderFiles();
+  }
+  const b = e.target.closest('[data-f]');
+  if (!b) return;
+  const f = files.list.find((x) => x.rel === b.dataset.rel);
+  if (b.dataset.f === 'upload') return $files.querySelector('[data-files-input]').click();
+  if (b.dataset.f === 'view' && f) return openLightbox(f.rel);
+  if (b.dataset.f === 'copy' && f) {
+    await copyText(f.path);
+    b.textContent = '✔ Copiado';
+    return setTimeout(() => (b.textContent = '📋 Caminho'), 1400);
+  }
+  if (b.dataset.f === 'use' && f) {
+    // entra como anexo pendente na conversa aberta no chat
+    const key = `chat|${files.cwd}|${chat.contact || 'lead'}`;
+    (pending[key] ||= []).push({ name: f.name, type: f.type, size: f.size, preview: kindOf(f) === 'image' ? fileUrl(files.cwd, f) : null, attachment: { name: f.name, type: f.type, size: f.size, rel: f.rel, path: f.path } });
+    return openChat(files.cwd, chat.contact || 'lead');
+  }
+  if (b.dataset.f === 'del' && f) {
+    if (!confirm(`Apagar "${f.name}"? Os agentes não vão mais conseguir abrir esse arquivo.`)) return;
+    await post('/api/files/delete', { cwd: files.cwd, rel: f.rel }).catch(() => {});
+    loadFiles(true);
+  }
+});
+$files.addEventListener('input', (e) => {
+  if (!e.target.matches('[data-files-search]')) return;
+  files.search = e.target.value;
+  const pos = e.target.selectionStart;
+  renderFiles();
+  const el = $files.querySelector('[data-files-search]');
+  el.focus();
+  el.setSelectionRange(pos, pos);
+});
+$files.addEventListener('change', (e) => {
+  if (e.target.matches('[data-files-input]') && e.target.files.length) uploadToGallery(e.target.files);
+});
+$files.addEventListener('dragover', (e) => {
+  if ([...(e.dataTransfer?.types || [])].includes('Files')) {
+    e.preventDefault();
+    $files.classList.add('dropping');
+  }
+});
+$files.addEventListener('dragleave', (e) => {
+  if (!$files.contains(e.relatedTarget)) $files.classList.remove('dropping');
+});
+$files.addEventListener('drop', (e) => {
+  $files.classList.remove('dropping');
+  if (e.dataTransfer?.files?.length) {
+    e.preventDefault();
+    uploadToGallery(e.dataTransfer.files);
+  }
+});
+
 function renderAll() {
   renderTeams();
   renderChat();
@@ -1611,6 +1937,7 @@ function connect(scene) {
       renderUpdate(msg.update);
       projects = msg.projects || [];
       applyFloor(scene);
+      if (activeTab === 'files') loadFiles();
     }
   };
   ws.onclose = () => {

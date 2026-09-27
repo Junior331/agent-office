@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { readFile, readdir, writeFile, appendFile } from 'node:fs/promises';
-import { readFileSync, existsSync, statSync, writeFileSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync, readdirSync, mkdirSync, createReadStream, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -357,6 +357,53 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === 'GET' && req.url.startsWith('/api/file?')) return serveAttachment(req, res);
+
+  if (req.method === 'GET' && req.url.startsWith('/api/files?')) {
+    const cwd = new URL(req.url, 'http://x').searchParams.get('cwd');
+    try {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, files: cwd ? listFiles(cwd) : [] }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/files/delete') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const r = deleteFile(JSON.parse(body || '{}'));
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, ...r }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/attach') {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > MAX_ATTACH * 1.4 + 10_000) req.destroy();
+      else chunks.push(c);
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        const buf = Buffer.from(String(data.data || '').replace(/^data:[^,]*,/, ''), 'base64');
+        const a = saveAttachment(data.cwd, data.name, buf, data.type, data.source === 'gallery' ? 'gallery' : 'chat');
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, attachment: a }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/api/floors/scan') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, repos: scanRepos() }));
@@ -526,6 +573,7 @@ function snapshot() {
   for (const p of projects) {
     const st = leadChatsOut[p.cwd];
     p.leadRunning = st.running;
+    p.filesRev = filesRev.get(p.cwd) || 0;
   }
   return JSON.stringify({
     type: 'agents',
@@ -823,9 +871,11 @@ async function answerRequest(data) {
 async function sendMessage(data) {
   const dir = taskDirFor(data);
   const team = teams.get(data.cwd);
-  const text = String(data.text || '').trim().slice(0, 4000);
-  if (!text) throw new Error('mensagem vazia');
-  const msg = { id: `MSG-${Date.now()}`, text, at: new Date().toISOString(), delivered: false };
+  const files = checkAttachments(data.cwd, data.attachments);
+  const typed = String(data.text || '').trim().slice(0, 4000) || (files.length ? 'Veja os anexos.' : '');
+  if (!typed) throw new Error('mensagem vazia');
+  const text = typed + attachmentsBlock(files);
+  const msg = { id: `MSG-${Date.now()}`, text, display: typed, attachments: files, at: new Date().toISOString(), delivered: false };
 
   if (data.to === 'lead') {
     msg.to = 'lead';
@@ -1111,7 +1161,7 @@ function pump(cwd) {
   proc.stderr.setEncoding('utf8');
   proc.stderr.on('data', (c) => (errTail = (errTail + c).slice(-2000)));
   proc.stdin.on('error', () => {});
-  proc.stdin.end(user.text);
+  proc.stdin.end(user.text + attachmentsBlock(user.attachments || []));
 
   const finish = (code, err) => {
     if (r.proc !== proc) return;
@@ -1148,6 +1198,158 @@ function pump(cwd) {
 function interactiveLeadOnline(cwd) {
   const r = runnerOf(cwd);
   return [...agents.values()].some((a) => !a.isSub && a.cwd === cwd && !r.sessionIds.has(a.id) && Date.now() - a.updatedAt < STALE_MS);
+}
+
+
+// ---------------------------------------------------------------- anexos (prints e arquivos no chat)
+// Ficam em <pasta do time>/attachments/AAAA-MM-DD/, fora do projeto. A mensagem leva o caminho
+// e o agente abre com a ferramenta Read do Claude Code (que enxerga imagem e lê PDF/texto).
+
+const MAX_ATTACH = 15 * 1024 * 1024;
+const ATTACH_MIME = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.json': 'application/json',
+  '.csv': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf', '.otf': 'font/otf', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.zip': 'application/zip', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.fig': 'application/octet-stream',
+};
+const filesRev = new Map(); // cwd → contador; muda quando entra ou sai arquivo (a tela recarrega a galeria)
+const bumpFiles = (cwd) => {
+  filesRev.set(normCwd(cwd), (filesRev.get(normCwd(cwd)) || 0) + 1);
+  pushSoon();
+};
+const attachRoot = (cwd) => normCwd(join(ensureProject(normCwd(cwd)), 'attachments'));
+const safeName = (n) =>
+  String(n || 'arquivo')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w.\-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'arquivo';
+
+function saveAttachment(cwd, name, buffer, type, source = 'chat') {
+  if (!buffer?.length) throw new Error('arquivo vazio');
+  if (buffer.length > MAX_ATTACH) throw new Error('arquivo maior que 15 MB');
+  const day = new Date().toISOString().slice(0, 10);
+  const dir = join(attachRoot(cwd), day);
+  mkdirSync(dir, { recursive: true });
+  const file = `${Date.now().toString(36)}-${safeName(name)}`;
+  writeFileSync(join(dir, file), buffer);
+  const rel = `${day}/${file}`;
+  const a = {
+    name: String(name || file).slice(0, 120),
+    type: type || ATTACH_MIME[extname(file).toLowerCase()] || 'application/octet-stream',
+    size: buffer.length,
+    rel,
+    path: normCwd(join(dir, file)),
+  };
+  appendFile(join(attachRoot(cwd), 'index.jsonl'), JSON.stringify({ ...a, source, at: new Date().toISOString() }) + '\n').catch(() => {});
+  bumpFiles(cwd);
+  return a;
+}
+
+// galeria: todos os arquivos já enviados neste andar, com onde cada um foi usado
+function listFiles(cwd) {
+  const floorCwd = normCwd(cwd);
+  const root = attachRoot(floorCwd);
+  const meta = new Map();
+  try {
+    for (const line of readFileSync(join(root, 'index.jsonl'), 'utf8').split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const e = JSON.parse(line);
+      if (e.deleted) meta.delete(e.rel);
+      else meta.set(e.rel, e);
+    }
+  } catch {
+    /* sem índice ainda */
+  }
+  const used = new Map();
+  const mark = (list, info) => {
+    for (const a of list || []) {
+      if (!a?.rel) continue;
+      if (!used.has(a.rel)) used.set(a.rel, []);
+      used.get(a.rel).push(info);
+    }
+  };
+  for (const e of chatOf(floorCwd)) if (e.from === 'user') mark(e.attachments, { to: 'Líder', at: e.at, text: String(e.text || '').slice(0, 90) });
+  const team = teams.get(floorCwd);
+  for (const m of team?.messages || []) {
+    const to = m.member ? m.member_name || m.member : m.to === 'lead' ? 'Líder' : m.to;
+    mark(m.attachments, { to, at: m.at, text: String(m.display ?? m.text ?? '').slice(0, 90) });
+  }
+  const out = [];
+  let days = [];
+  try {
+    days = readdirSync(root).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  } catch {
+    return out;
+  }
+  for (const day of days) {
+    for (const f of readdirSync(join(root, day))) {
+      const rel = `${day}/${f}`;
+      const full = join(root, day, f);
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      const m = meta.get(rel) || {};
+      out.push({
+        rel,
+        day,
+        name: m.name || f.replace(/^[a-z0-9]+-/, ''),
+        type: m.type || ATTACH_MIME[extname(f).toLowerCase()] || 'application/octet-stream',
+        size: st.size,
+        at: m.at || st.mtime.toISOString(),
+        source: m.source || 'chat',
+        path: normCwd(full),
+        used: used.get(rel) || [],
+      });
+    }
+  }
+  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+
+function deleteFile({ cwd, rel }) {
+  const root = attachRoot(cwd);
+  const file = normCwd(join(root, String(rel || '')));
+  if (!rel || String(rel).includes('..') || !file.toLowerCase().startsWith(root.toLowerCase() + '/') || !existsSync(file)) throw new Error('arquivo não encontrado');
+  rmSync(file, { force: true });
+  appendFile(join(root, 'index.jsonl'), JSON.stringify({ rel, deleted: true, at: new Date().toISOString() }) + '\n').catch(() => {});
+  bumpFiles(cwd);
+  return { deleted: rel };
+}
+
+// só aceita anexos que estão mesmo na pasta de anexos deste andar
+function checkAttachments(cwd, list) {
+  const root = attachRoot(cwd).toLowerCase();
+  return (Array.isArray(list) ? list : []).slice(0, 10).filter((a) => a?.path && normCwd(a.path).toLowerCase().startsWith(root + '/') && existsSync(a.path));
+}
+
+function attachmentsBlock(list) {
+  if (!list.length) return '';
+  const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  return (
+    '\n\nAnexos enviados pelo usuário (abra com a ferramenta Read antes de responder):\n' +
+    list.map((a) => `- ${a.path} (${a.type.startsWith('image/') ? 'imagem' : a.type}, ${kb(a.size)})`).join('\n')
+  );
+}
+
+function serveAttachment(req, res) {
+  const url = new URL(req.url, 'http://x');
+  const cwd = url.searchParams.get('cwd');
+  const rel = url.searchParams.get('f') || '';
+  if (!cwd || !rel || rel.includes('..')) return res.writeHead(400).end();
+  const root = attachRoot(cwd);
+  const file = normCwd(join(root, rel));
+  if (!file.toLowerCase().startsWith(root.toLowerCase() + '/') || !existsSync(file)) return res.writeHead(404).end();
+  const ext = extname(file).toLowerCase();
+  // svg e html nunca são renderizados como página (evita script embutido)
+  const type = ext === '.svg' ? 'text/plain; charset=utf-8' : ATTACH_MIME[ext] || 'application/octet-stream';
+  res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self'" });
+  createReadStream(file).pipe(res);
 }
 
 // ---------------------------------------------------------------- login do Claude Code
@@ -1245,9 +1447,10 @@ async function leadRetry({ cwd, id }) {
   return leadSend({ cwd: floorCwd, text: original.text });
 }
 
-async function leadSend({ cwd, text }) {
+async function leadSend({ cwd, text, attachments }) {
   const floorCwd = normCwd(cwd);
-  const msg = String(text || '').trim().slice(0, 8000);
+  const files = checkAttachments(floorCwd, attachments);
+  const msg = String(text || '').trim().slice(0, 8000) || (files.length ? 'Veja os anexos.' : '');
   if (!msg) throw new Error('mensagem vazia');
   if (/^\/login\b/i.test(msg)) {
     openLogin();
@@ -1271,11 +1474,12 @@ async function leadSend({ cwd, text }) {
   const team = teams.get(floorCwd);
   // tem task do time e uma sessão aberta no terminal/VS Code → entrega nela, como antes
   if (team?.task && interactiveLeadOnline(floorCwd)) {
-    const r = await sendMessage({ cwd: floorCwd, task: team.task, to: 'lead', text: msg });
+    const r = await sendMessage({ cwd: floorCwd, task: team.task, to: 'lead', text: msg, attachments: files });
     return { route: 'inbox', id: r.id };
   }
   if (!existsSync(floorCwd)) throw new Error('a pasta desse andar não existe mais neste computador');
-  const entry = { id: `U-${Date.now()}`, from: 'user', text: msg, at: new Date().toISOString(), status: 'queued' };
+  const entry = { id: `U-${Date.now()}`, from: 'user', text: msg, at: new Date().toISOString(), status: 'queued', attachments: files };
+  if (files.length) bumpFiles(floorCwd);
   chatOf(floorCwd).push(entry);
   runnerOf(floorCwd).queue.push(entry.id);
   saveChat(floorCwd);
@@ -1601,6 +1805,29 @@ async function tgHandle(u) {
       return tgSend(`💬 Agora falando com ${v.name}. É só escrever.`);
     }
     return;
+  }
+
+  // foto ou arquivo mandado pelo celular → vira anexo pra quem está selecionado
+  const tgFile = (u.message?.photo && u.message.photo[u.message.photo.length - 1]) || u.message?.document;
+  if (tgFile) {
+    const t = tgCurrentTeam();
+    if (!t) return tgSend('Nenhum andar ainda. Adicione um projeto no escritório.');
+    try {
+      const info = await tgCall('getFile', { file_id: tgFile.file_id });
+      if (!info.ok) throw new Error('o Telegram não liberou o arquivo (limite de 20 MB)');
+      const res = await fetch(`https://api.telegram.org/file/bot${TG_CONF.token}/${info.result.file_path}`, { signal: AbortSignal.timeout(60_000) });
+      const buf = Buffer.from(await res.arrayBuffer());
+      const name = u.message.document?.file_name || `foto-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.jpg`;
+      const a = saveAttachment(t.cwd, name, buf, u.message.document?.mime_type || 'image/jpeg', 'telegram');
+      const caption = String(u.message.caption || '').trim();
+      if (tg.to === 'lead') await leadSend({ cwd: t.cwd, text: caption, attachments: [a] });
+      else if (t.task) await sendMessage({ cwd: t.cwd, task: t.task, to: tg.to, text: caption, attachments: [a] });
+      else return tgSend('Esse andar ainda não tem time: mande pro Líder.');
+      broadcast();
+      return tgSend(`📎 ${a.name} enviado pra ${tgName(t, tg.to)} (${t.project}).`);
+    } catch (err) {
+      return tgSend(`Não consegui enviar o arquivo: ${err.message}`);
+    }
   }
 
   const text = String(u.message?.text || '').trim();

@@ -78,7 +78,7 @@
     }
     .tabs { display: flex; gap: 4px; padding: 0 10px; border-bottom: 3px solid #1b1830; }
     .tabs button {
-      flex: 1; font-family: var(--pixel); font-size: 1.3rem; color: var(--muted); background: transparent;
+      flex: 1; white-space: nowrap; font-family: var(--pixel); font-size: 1.1rem; color: var(--muted); background: transparent;
       border: 0; border-bottom: 3px solid transparent; padding: 8px 4px 6px; cursor: pointer; margin-bottom: -3px;
     }
     .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: #ffd54f; }
@@ -218,11 +218,62 @@
     @media (prefers-reduced-motion: reduce) { .dots { animation: none; } }
     .b-meta-them { text-align: left; color: #9fc9b0; }
     .bubble.b-error { background: #3a1f28; border-left-color: #ff6b6b; }
+    /* arquivos */
+    #files { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .f-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .f-head h3 { margin: 0; font-family: var(--pixel); font-weight: 400; font-size: 1.4rem; }
+    .f-head button { font-family: var(--pixel); font-size: 1.05rem; color: var(--text); background: #2e7d4f; border: 2px solid #6fdc8c; padding: 3px 10px; cursor: pointer; }
+    .f-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+    .f-filters button { font: inherit; font-size: .75rem; color: var(--text); background: var(--panel-raised); border: 2px solid transparent; padding: 3px 8px; cursor: pointer; }
+    .f-filters button[aria-pressed="true"] { border-color: #ffd54f; background: #463e6b; }
+    #files input[type=search] { font: inherit; font-size: .82rem; color: var(--text); background: #1b1830; border: 2px solid #4a4370; padding: 6px 8px; }
+    #files :is(button, input, summary, a):focus-visible { outline: 2px solid #ffd54f; outline-offset: 1px; }
+    .f-day { background: #221c38; border: 2px solid #3a3359; }
+    .f-day summary { cursor: pointer; padding: 6px 10px; font-family: var(--pixel); font-size: 1.15rem; }
+    .f-day summary small { font-family: var(--body); font-size: .72rem; color: var(--muted); margin-left: 6px; }
+    .f-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; padding: 0 8px 8px; }
+    .f-thumb { position: relative; background: #1b1830; border: 2px solid #3a3359; }
+    .f-thumb button.f-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+    .f-thumb img { width: 100%; height: 84px; object-fit: cover; display: block; }
+    .f-thumb .f-cap { font-size: .68rem; padding: 3px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .f-list { list-style: none; margin: 0; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+    .f-item { background: #1b1830; border: 2px solid #3a3359; padding: 6px 8px; }
+    .f-item .f-top { display: flex; gap: 8px; align-items: baseline; }
+    .f-item b { font-size: .8rem; overflow-wrap: anywhere; }
+    .f-item small, .f-used { color: var(--muted); font-size: .7rem; }
+    .f-font { font-size: 1.5rem; margin: 4px 0; line-height: 1.2; overflow-wrap: anywhere; }
+    .f-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .f-acts a, .f-acts button { font: inherit; font-size: .7rem; color: var(--text); background: #2e2848; border: 1px solid #4a4370; padding: 2px 6px; cursor: pointer; text-decoration: none; }
+    .f-acts .f-del { border-color: #7a3a44; }
+    .f-thumb .f-acts { padding: 0 4px 4px; }
+    #files.dropping { outline: 3px dashed #6fdc8c; outline-offset: -6px; }
+    .lightbox { max-width: 94vw; max-height: 94vh; padding: 0; background: #0f0b08; border: 3px solid #4a4370; color: var(--text); }
+    .lightbox::backdrop { background: rgba(10,8,20,.85); }
+    .lightbox img { display: block; max-width: 92vw; max-height: 84vh; object-fit: contain; }
+    .lb-bar { display: flex; gap: 6px; align-items: center; padding: 6px 10px; }
+    .lb-name { flex: 1; font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-bar button { font: inherit; font-size: 1.1rem; color: var(--text); background: #2e2848; border: 2px solid #4a4370; padding: 0 10px; cursor: pointer; }
+    .lb-bar button:focus-visible { outline: 2px solid #ffd54f; }
     .login-msg { margin: 8px 0 0; font-size: .8rem; }
     .login-open, .login-checking { color: #ffd54f; }
     .login-ok { color: #6fdc8c; font-weight: 700; }
     .login-failed { color: #ff8a8a; }
-    .composer { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: stretch; }
+    .composer { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: stretch; }
+    .composer .pending { grid-column: 1 / -1; }
+    .attach-btn { font-size: 1.2rem; color: var(--text); background: #221c38; border: 2px solid #4a4370; padding: 0 10px; cursor: pointer; }
+    .attach-btn:focus-visible { outline: 2px solid #ffd54f; }
+    .pending { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+    .pending li { display: flex; align-items: center; gap: 6px; max-width: 220px; background: #221c38; border: 2px solid #4a4370; padding: 3px 6px; font-size: .75rem; }
+    .pending li.p-err { border-color: #ff6b6b; }
+    .pending img { width: 34px; height: 34px; object-fit: cover; }
+    .p-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .pending small { color: var(--muted); white-space: nowrap; }
+    .pending button { font: inherit; color: var(--muted); background: transparent; border: 0; cursor: pointer; }
+    #chat.dropping .thread { outline: 3px dashed #6fdc8c; outline-offset: -6px; }
+    .b-att { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .b-att img { max-width: 160px; max-height: 120px; object-fit: cover; border: 2px solid rgba(255,255,255,.15); display: block; }
+    .b-file { color: var(--text); background: rgba(0,0,0,.2); padding: 4px 8px; text-decoration: none; font-size: .78rem; }
+    .b-file small { color: #b9c9dc; }
     .composer .form-error { grid-column: 1 / -1; }
     .composer .send { font-family: var(--pixel); font-size: 1.2rem; padding: 0 14px; cursor: pointer; color: var(--text); background: #2e7d4f; border: 2px solid #6fdc8c; }
     .composer textarea { width: 100%; font: inherit; font-size: .88rem; color: var(--text); background: #1b1830; border: 2px solid #4a4370; padding: 8px; resize: none; max-height: 30vh; }
@@ -344,6 +395,10 @@
 <body>
   <main class="layout">
     <section class="stage" aria-label="Mapa do escritório"><div id="game"></div><nav id="building" class="building" aria-label="Andares do prédio"></nav></section>
+    <dialog id="lightbox" class="lightbox" aria-label="Visualizar imagem">
+      <img alt="" />
+      <div class="lb-bar"><span class="lb-name"></span><button data-lb="prev" aria-label="Anterior">‹</button><button data-lb="next" aria-label="Próxima">›</button><button data-lb="close" aria-label="Fechar">✕</button></div>
+    </dialog>
     <dialog id="floor-dialog" class="floor-dialog" aria-labelledby="fd-title">
       <header><h3 id="fd-title">Adicionar andar</h3><button data-fd-close aria-label="Fechar">✕</button></header>
       <p class="hint">Cada andar é um projeto. Escolha um repositório encontrado ou cole o caminho da pasta. Nada é criado dentro do projeto.</p>
@@ -363,6 +418,7 @@
       <nav class="tabs" role="tablist" aria-label="Seções do painel">
         <button role="tab" data-tab="team" aria-selected="true">Equipe</button>
         <button role="tab" data-tab="chat" aria-selected="false">Chat <span id="chat-badge" class="badge" hidden></span></button>
+        <button role="tab" data-tab="files" aria-selected="false">Arquivos</button>
         <button role="tab" data-tab="history" aria-selected="false">Histórico</button>
       </nav>
       <div class="tab" id="tab-team">
@@ -374,6 +430,7 @@
         </p>
       </div>
       <div class="tab" id="tab-chat" hidden><div id="chat"></div></div>
+      <div class="tab" id="tab-files" hidden><div id="files"></div></div>
       <div class="tab" id="tab-history" hidden><ul id="history"></ul></div>
     </aside>
   </main>

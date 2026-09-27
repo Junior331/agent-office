@@ -126,6 +126,8 @@ Qualquer pasta onde você abrir o Claude Code (no terminal ou no VS Code) també
    - *"/team criar a tela de login com validação de e-mail e senha, seguindo o padrão das outras telas."*
 3. Ele trabalha sozinho e você vê ao vivo o que ele está fazendo. A resposta chega no chat, com botão **📋 Copiar**.
 
+**Anexos:** mande prints e arquivos (imagens, PDF, texto) pelo **📎**, colando com **Ctrl+V** ou arrastando pra conversa. Eles ficam na pasta do time (fora do projeto) e o agente abre antes de responder. Até 15 MB por arquivo. Pelo Telegram, foto ou arquivo também vão como anexo.
+
 Com `/team`, o líder escreve um plano (spec) e **pede sua aprovação** antes de começar. Depois monta a equipe, e você vê cada agente trabalhando no mapa.
 
 ### Autonomia do Líder
@@ -144,6 +146,7 @@ Em todos os níveis a equipe segue regras de segurança: o QA não mexe no códi
 
 - **Equipe**: quem está no time, o que cada um está fazendo, desempenho (🟢 🔵 🟡 🔴), pedidos esperando você, contratar e desligar.
 - **Chat**: conversa com o Líder e com cada agente. O botão **⇤** expande o chat pra ler respostas grandes.
+- **Arquivos**: tudo que já foi enviado neste projeto (prints, PDFs, logos, fontes…), em pastas por dia, com filtros, busca, visualizador de imagens e prévia de fontes. Dá pra subir arquivos direto aqui, baixar, reusar no chat com **📎 Usar no chat** ou copiar o caminho.
 - **Histórico**: cada tarefa que os agentes fizeram, com tempo, resultado e tokens gastos.
 
 ---
